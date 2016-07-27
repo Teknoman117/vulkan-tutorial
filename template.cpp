@@ -22,7 +22,7 @@ public:
 		initVulkan();
 		mainLoop();
 	}
-}
+};
 
 int main(int argc, char **argv)
 {
