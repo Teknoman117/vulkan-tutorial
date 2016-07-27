@@ -1,5 +1,5 @@
-CFLAGS=-Werror
-CXXFLAGS=$(CFLAGS) -std=c++11
+CFLAGS=-Werror -ggdb
+CXXFLAGS=$(CFLAGS) -std=c++14
 LDFLAGS=`pkg-config --static --libs glfw3` -lvulkan
 
 CC=gcc
