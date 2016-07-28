@@ -12,6 +12,7 @@
 #include <iterator>
 
 #include "vdeleter.hpp"
+#include "vkDebugReportCallbackEXT.hpp"
 
 namespace
 {
@@ -46,6 +47,7 @@ class HelloTriangleApplication
     void initVulkan()
     {
         createInstance();
+        setupDebugCallback();
     }
 
     void mainLoop()
@@ -57,29 +59,8 @@ class HelloTriangleApplication
 
     void createInstance()
     {
-        // Dump the available vulkan extensions
-        uint32_t extensionCount = 0;
-        vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-        std::vector<VkExtensionProperties> extensions(extensionCount);
-        vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
-
-        std::cout << "Available Vulkan Extensions: " << std::endl;
-        for(const auto& extension : extensions) {
-            std::cout << "\t" << extension.extensionName << std::endl;
-        }
-        std::cout << std::endl;
-
-        // Get the required vulkan extensions for GLFW to function
-        unsigned int glfwExtensionCount = 0;
-        const char** glfwExtensions;
-
-        glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-        std::cout << "GLFW Required Vulkan Extensions: " << std::endl;
-        for(size_t i = 0; i < glfwExtensionCount; i++) {
-            std::cout << "\t" << glfwExtensions[i] << std::endl;
-        }
-        std::cout << std::endl;
+        // Get the required vulkan extensions
+        auto extensions = std::move(getRequiredExtensions());
 
         // Fetch the validation layers we watch
         if(enableValidationLayers && !checkValidationLayerSupport()) {
@@ -99,8 +80,8 @@ class HelloTriangleApplication
         VkInstanceCreateInfo createInfo    = {};
         createInfo.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
         createInfo.pApplicationInfo        = &appInfo;
-        createInfo.enabledExtensionCount   = glfwExtensionCount;
-        createInfo.ppEnabledExtensionNames = glfwExtensions;
+        createInfo.enabledExtensionCount   = extensions.size();
+        createInfo.ppEnabledExtensionNames = extensions.data();
         createInfo.enabledLayerCount       = 0;
 
         if(enableValidationLayers) {
@@ -138,7 +119,57 @@ class HelloTriangleApplication
         // Ensure selected validation layers is a subset of available layers
         return std::includes(availableLayersSet.begin(), availableLayersSet.end(), 
                              validationLayersSet.begin(), validationLayersSet.end());
-    } 
+    }
+
+    // Get the required extensions to run 
+    std::vector<const char*> getRequiredExtensions() 
+    {
+        std::vector<const char *> extensions;
+
+        // Get the required vulkan extensions for GLFW to function
+        unsigned int glfwExtensionCount = 0;
+        const char** glfwExtensions;
+
+        glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+        extensions.insert(extensions.end(), glfwExtensions, glfwExtensions+glfwExtensionCount);
+
+        if (enableValidationLayers) {
+            extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+        }
+
+        return extensions;
+    }
+
+    // Debugging callback
+    static VkBool32 debugCallback(VkDebugReportFlagsEXT flags,
+                                  VkDebugReportObjectTypeEXT objType,
+                                  uint64_t obj,
+                                  size_t location,
+                                  int32_t code,
+                                  const char* layerPrefix,
+                                  const char* msg,
+                                  void* userData) 
+    {
+        std::cerr << "validation layer: " << msg << std::endl;
+        return VK_FALSE;
+    }
+
+    // Setup the debug callback
+    void setupDebugCallback()
+    {
+        if(!enableValidationLayers) {
+            return;
+        }
+
+        VkDebugReportCallbackCreateInfoEXT createInfo = {};
+        createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
+        createInfo.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT;
+        createInfo.pfnCallback = (PFN_vkDebugReportCallbackEXT) debugCallback;
+
+        if(CreateDebugReportCallbackEXT(instance, &createInfo, nullptr, &callback) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to setup debug callback!");
+        }
+    }
 
 public:
     void run()
@@ -149,7 +180,8 @@ public:
     }
 
 private:
-    VDeleter<VkInstance> instance {vkDestroyInstance};
+    VDeleter<VkInstance>               instance {vkDestroyInstance};
+    VDeleter<VkDebugReportCallbackEXT> callback {instance, DestroyDebugReportCallbackEXT};
 
     // Unique pointer for the window, will destroy the window on close
     std::unique_ptr<GLFWwindow, decltype(&glfwDestroyWindow)> window {nullptr, &glfwDestroyWindow};
